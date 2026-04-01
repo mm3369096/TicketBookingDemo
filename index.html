@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 演唱會搶票與 B2B 管理系統</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 引入 Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: '#00f2fe',
+                        dark: '#0f172a',
+                        card: '#1e293b',
+                        admin: '#f59e0b'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- 全域通知組件 (Toast) -->
+        <div v-if="toast.show" class="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded shadow-lg transition-all"
+             :class="toast.type === 'error' ? 'bg-red-600 text-white' : (toast.type === 'admin' ? 'bg-admin text-slate-900 font-bold' : 'bg-brand text-slate-900 font-bold')">
+            {{ toast.message }}
+        </div>
+
+        <!-- 導覽列 -->
+        <nav class="sticky top-0 z-40 bg-dark/90 backdrop-blur border-b border-slate-800">
+            <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+                <div class="flex items-center gap-6">
+                    <h1 class="text-xl font-bold tracking-wider cursor-pointer" :class="isAdmin ? 'text-admin' : 'text-brand'" @click="page = 'home'">
+                        J-LIVE {{ isAdmin ? 'B2B 後台' : '2026' }}
+                    </h1>
+                    <div class="hidden md:flex gap-4 text-sm font-medium text-slate-300">
+                        <template v-if="!isAdmin">
+                            <button @click="page = 'home'" :class="{'text-brand': page === 'home'}" class="hover:text-white transition">首頁</button>
+                            <button @click="navTo('tickets')" :class="{'text-brand': page === 'tickets'}" class="hover:text-white transition">購票</button>
+                            <button @click="page = 'shop'" :class="{'text-brand': page === 'shop'}" class="hover:text-white transition">周邊商城</button>
+                        </template>
+                        <template v-else>
+                            <button @click="page = 'admin-dashboard'" :class="{'text-admin': page === 'admin-dashboard'}" class="hover:text-white transition">營運數據面板</button>
+                        </template>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <template v-if="!isAdmin">
+                        <button @click="page = 'shop'" class="relative p-2 text-slate-300 hover:text-brand transition">
+                            <i class="ph ph-shopping-cart text-2xl"></i>
+                            <span v-if="cartTotalQty > 0" class="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">{{ cartTotalQty }}</span>
+                        </button>
+                    </template>
+                    
+                    <template v-if="user">
+                        <span class="text-sm text-slate-400 hidden sm:block">{{ user.email || user.empId }}</span>
+                        <button @click="logout" class="text-sm px-4 py-1.5 border border-slate-600 rounded hover:bg-slate-800 transition">登出</button>
+                    </template>
+                    <template v-else>
+                        <button @click="page = 'login'" class="text-sm px-4 py-1.5 bg-brand text-slate-900 font-bold rounded hover:bg-cyan-400 transition shadow-[0_0_10px_rgba(0,242,254,0.3)]">一般登入</button>
+                    </template>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 主內容區 -->
+        <main class="flex-1 w-full max-w-6xl mx-auto p-4 md:p-8">
+            <transition name="fade" mode="out-in">
+                
+                <!-- 1. 首頁 -->
+                <div v-if="page === 'home'" class="flex flex-col items-center justify-center text-center py-20">
+                    <div class="w-full max-w-3xl h-64 md:h-96 bg-slate-800 rounded-2xl flex items-center justify-center mb-8 border border-slate-700 relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-gradient-to-tr from-blue-900/40 to-cyan-500/10"></div>
+                        <h2 class="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 z-10 tracking-widest">WORLD TOUR 2026</h2>
+                    </div>
+                    <p class="text-slate-400 max-w-2xl mb-8 leading-relaxed">
+                        史上最高規格的舞台設計，視覺與聽覺的極致饗宴。門票採用實名制與動態加密驗證，杜絕黃牛，保障您的權益。
+                    </p>
+                    <div class="flex gap-4">
+                        <button @click="navTo('tickets')" class="px-8 py-3 bg-brand text-slate-900 font-bold rounded shadow-[0_0_15px_rgba(0,242,254,0.4)] hover:shadow-[0_0_25px_rgba(0,242,254,0.6)] transition">立即搶票</button>
+                        <button @click="page = 'shop'" class="px-8 py-3 border border-slate-600 text-slate-300 rounded hover:bg-slate-800 transition">預購周邊</button>
+                    </div>
+                </div>
+
+                <!-- 2. 登入/註冊頁面 (含切換管理員) -->
+                <div v-else-if="page === 'login'" class="flex justify-center py-12">
+                    <div class="bg-card p-8 rounded-xl border border-slate-700 w-full max-w-md shadow-2xl relative overflow-hidden">
+                        <!-- 管理員模式切換標籤 -->
+                        <div class="absolute top-0 right-0">
+                            <button @click="loginMode = loginMode === 'user' ? 'admin' : 'user'" 
+                                    class="text-xs px-3 py-1 rounded-bl-lg transition-colors"
+                                    :class="loginMode === 'admin' ? 'bg-admin text-slate-900' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'">
+                                {{ loginMode === 'user' ? '切換 B2B 管理員登入' : '切換一般用戶登入' }}
+                            </button>
+                        </div>
+
+                        <h2 class="text-2xl font-bold text-white mb-6 text-center mt-4">
+                            {{ loginMode === 'user' ? '一般會員登入' : 'B2B 後台管理登入' }}
+                        </h2>
+
+                        <!-- 用戶登入表單 -->
+                        <form v-if="loginMode === 'user'" @submit.prevent="handleLogin" class="flex flex-col gap-4">
+                            <div>
+                                <label class="block text-sm text-slate-400 mb-1">電子信箱</label>
+                                <input v-model="loginForm.email" type="email" required class="w-full bg-dark border border-slate-600 rounded px-4 py-2 text-white focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-slate-400 mb-1">密碼</label>
+                                <input v-model="loginForm.password" type="password" required class="w-full bg-dark border border-slate-600 rounded px-4 py-2 text-white focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand">
+                            </div>
+                            <button type="submit" class="w-full py-2.5 mt-4 bg-brand text-slate-900 font-bold rounded hover:bg-cyan-400 transition">登入 / 註冊</button>
+                        </form>
+
+                        <!-- 管理員登入表單 -->
+                        <form v-else @submit.prevent="handleAdminLogin" class="flex flex-col gap-4">
+                            <div>
+                                <label class="block text-sm text-slate-400 mb-1">員工證號 (Emp ID)</label>
+                                <input v-model="adminLoginForm.empId" type="text" required class="w-full bg-dark border border-slate-600 rounded px-4 py-2 text-white focus:outline-none focus:border-admin focus:ring-1 focus:ring-admin" placeholder="輸入任意字元即可">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-slate-400 mb-1">管理員密碼</label>
+                                <input v-model="adminLoginForm.password" type="password" required class="w-full bg-dark border border-slate-600 rounded px-4 py-2 text-white focus:outline-none focus:border-admin focus:ring-1 focus:ring-admin" placeholder="輸入任意字元即可">
+                            </div>
+                            <button type="submit" class="w-full py-2.5 mt-4 bg-admin text-slate-900 font-bold rounded hover:bg-yellow-400 transition">進入營運後台</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- 3. B2B 管理後台 -->
+                <div v-else-if="page === 'admin-dashboard'" class="flex flex-col gap-6">
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-4">
+                        <h2 class="text-2xl font-bold text-admin flex items-center gap-2"><i class="ph ph-chart-line-up"></i> 營運數據儀表板</h2>
+                        <span class="text-sm text-slate-400">即時系統狀態：<span class="text-green-400">● 正常運行</span></span>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- 營運數據區 -->
+                        <div class="lg:col-span-1 flex flex-col gap-6">
+                            <!-- 統計卡片 -->
+                            <div class="bg-card p-6 rounded-xl border border-slate-700">
+                                <h3 class="text-sm font-bold text-slate-400 mb-4 uppercase tracking-wider">售票進度 (特區)</h3>
+                                <div class="flex items-end gap-2 mb-2">
+                                    <span class="text-4xl font-black text-white">{{ stats.soldSeats }}</span>
+                                    <span class="text-slate-400 mb-1">/ {{ stats.totalSeats }} 張</span>
+                                </div>
+                                <div class="w-full bg-dark rounded-full h-2.5 mb-2">
+                                    <div class="bg-admin h-2.5 rounded-full" :style="{ width: (stats.soldSeats / stats.totalSeats * 100) + '%' }"></div>
+                                </div>
+                                <p class="text-xs text-right text-slate-400">完售率: {{ Math.round(stats.soldSeats / stats.totalSeats * 100) }}%</p>
+                            </div>
+
+                            <div class="bg-card p-6 rounded-xl border border-slate-700">
+                                <h3 class="text-sm font-bold text-slate-400 mb-4 uppercase tracking-wider">系統即時負載 (模擬)</h3>
+                                <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-2">
+                                    <span class="text-sm">線上排隊人數</span>
+                                    <span class="font-mono text-brand">1,420</span>
+                                </div>
+                                <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-2">
+                                    <span class="text-sm">Redis 鎖定中座位</span>
+                                    <span class="font-mono text-yellow-400">{{ seats.filter(s => s.status === 1).length }}</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm">API 響應延遲</span>
+                                    <span class="font-mono text-green-400">42 ms</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 專案提案說明區 -->
+                        <div class="lg:col-span-2 bg-card p-6 md:p-8 rounded-xl border border-slate-700">
+                            <h3 class="text-xl font-bold text-white mb-6 border-l-4 border-admin pl-3">與大家分享的專題提案：為什麼想選擇「搶票+商城」呢？</h3>
+                            
+                            <div class="space-y-6 text-sm text-slate-300 leading-relaxed">
+                                <div>
+                                    <h4 class="text-brand font-bold text-base mb-2 flex items-center gap-2"><i class="ph ph-target"></i> 1. 讓架構變簡單，把時間留給更核心的技術學習</h4>
+                                    <p>其實「寵物 Airbnb」是個很棒的點子，但因為日期重疊和表單驗證會花去我們非常多時間，所以想提議改成單純的座位模型（只有空位、鎖定、售出三種狀態）。這樣能大大減輕大家在資料庫 (SSMS) 上的壓力，讓我們把寶貴的專題時間，投資在面試官最看重的「高併發處理」與「資料庫事務」上，對大家的求職會更有幫助喔。</p>
+                                </div>
+                                
+                                <div>
+                                    <h4 class="text-brand font-bold text-base mb-2 flex items-center gap-2"><i class="ph ph-shield-check"></i> 2. 照顧彼此的進度：我們的三階段安心方案</h4>
+                                    <p>知道大家可能會擔心搶票系統太難寫不出來，別擔心，我們有安排很有彈性的備案：</p>
+                                    <ul class="list-disc list-inside mt-2 space-y-1 text-slate-400 pl-2">
+                                        <li><strong>Level 1 (安心保底)</strong>：用標準的 SQL Update 加上 Security，這樣我們一定能交出完整的作品。</li>
+                                        <li><strong>Level 2 (順利達標)</strong>：嘗試加上 Hibernate 樂觀鎖 (<code>@Version</code>)，解決基本的超賣問題。</li>
+                                        <li><strong>Level 3 (行有餘力再加分)</strong>：如果大家進度順利，再來挑戰 Redis 預扣庫存跟排隊室，一起讓專題變得更厲害！</li>
+                                    </ul>
+                                </div>
+
+                                <div>
+                                    <h4 class="text-brand font-bold text-base mb-2 flex items-center gap-2"><i class="ph ph-users-three"></i> 3. 讓每個人都能發揮所長的分工建議</h4>
+                                    <p>這個提案最大的好處是，各個功能彼此獨立，大家可以依照自己的興趣和步調來開發，不用怕卡到別人的進度：</p>
+                                    <ul class="list-disc list-inside mt-2 space-y-1 text-slate-400 pl-2">
+                                        <li><strong>商城與訂單 (CRUD)</strong>：適合喜歡穩紮穩打，把基礎練熟的同學。</li>
+                                        <li><strong>搶票與併發 (Redis/Locking)</strong>：適合想挑戰高難度技術、研究效能優化的同學。</li>
+                                        <li><strong>視覺化選位 (Vue/SVG)</strong>：適合對前端 Vue 或 UI 設計有熱忱的同學。</li>
+                                        <li><strong>B2B 管理後台</strong>：能練習複雜的 SQL 統計，適合想深入資料處理的同學。</li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="p-4 bg-dark/50 border border-slate-600 rounded">
+                                    <p class="text-xs text-slate-400 font-mono">
+                                        [備註小語] 這個 Prototype 是先用 Vue 3 單檔寫出來的，主要想讓大家對於「資料結構精簡化」有一個比較具體的想像，後續我們實作時再一起轉移到 Spring Boot 專案裡就好囉。
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. 訂票頁面 -->
+                <div v-else-if="page === 'tickets'" class="flex flex-col lg:flex-row gap-8">
+                    <!-- 左側：座位圖 -->
+                    <div class="flex-1 bg-card p-6 rounded-xl border border-slate-700">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-xl font-bold">選擇座位 (特區)</h2>
+                            <div class="flex gap-4 text-xs">
+                                <span class="flex items-center gap-1"><div class="w-3 h-3 bg-slate-600 rounded-sm"></div> 可選</span>
+                                <span class="flex items-center gap-1"><div class="w-3 h-3 bg-brand rounded-sm shadow-[0_0_5px_#00f2fe]"></div> 您的選擇</span>
+                                <span class="flex items-center gap-1"><div class="w-3 h-3 bg-slate-800 border border-slate-700 rounded-sm"></div> 售出</span>
+                            </div>
+                        </div>
+                        
+                        <div class="w-full h-8 bg-gradient-to-b from-slate-700 to-transparent rounded-t-lg mb-8 flex items-center justify-center text-xs text-slate-400 tracking-widest border-t-2 border-brand">STAGE</div>
+                        
+                        <div class="grid grid-cols-10 gap-2 md:gap-3 justify-center mb-6">
+                            <div v-for="seat in seats" :key="seat.id" 
+                                 @click="toggleSeat(seat)"
+                                 class="aspect-square rounded flex items-center justify-center text-[10px] transition-all duration-200"
+                                 :class="[
+                                    seat.status === 0 ? 'bg-slate-600 hover:bg-slate-500 cursor-pointer' : 
+                                    seat.status === 1 ? 'bg-brand text-slate-900 font-bold shadow-[0_0_8px_rgba(0,242,254,0.6)] cursor-pointer' : 
+                                    'bg-slate-800 border border-slate-700 text-slate-700 cursor-not-allowed'
+                                 ]"
+                                 :title="`排${seat.row} 號${seat.col}`">
+                                {{ seat.row }}-{{ seat.col }}
+                            </div>
+                        </div>
+                        
+                        <div class="mt-8 p-4 border border-dashed border-slate-600 rounded bg-dark/50 flex justify-between items-center">
+                            <div>
+                                <p class="text-xs text-brand font-bold"><i class="ph ph-terminal-window"></i> 模擬高併發干擾</p>
+                                <p class="text-[10px] text-slate-500 mt-1">模擬他人在背景購買座位 (觸發樂觀鎖情境)</p>
+                            </div>
+                            <button @click="simulateConcurrentBooking" class="text-xs px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-white transition">
+                                隨機售出空位
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 右側：訂單面板 -->
+                    <div class="w-full lg:w-80 bg-card p-6 rounded-xl border border-slate-700 h-fit sticky top-20">
+                        <h3 class="font-bold text-lg border-b border-slate-700 pb-3 mb-4">購票明細</h3>
+                        <div v-if="selectedSeats.length === 0" class="text-sm text-slate-500 py-8 text-center">尚未選擇座位</div>
+                        <div v-else class="flex flex-col gap-3 mb-6">
+                            <div v-for="s in selectedSeats" :key="s.id" class="flex justify-between text-sm bg-dark p-2 rounded border border-slate-700">
+                                <span>排{{ s.row }} 號{{ s.col }}</span>
+                                <span class="text-brand">NT$ {{ s.price.toLocaleString() }}</span>
+                            </div>
+                            <div class="border-t border-slate-700 pt-3 mt-2 flex justify-between font-bold">
+                                <span>總計 ({{ selectedSeats.length }}張)</span>
+                                <span class="text-brand text-lg">NT$ {{ selectedSeatsTotal.toLocaleString() }}</span>
+                            </div>
+                        </div>
+                        <button @click="submitBooking" :disabled="selectedSeats.length === 0" 
+                                class="w-full py-3 rounded font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                :class="selectedSeats.length > 0 ? 'bg-brand text-slate-900 shadow-[0_0_10px_rgba(0,242,254,0.4)] hover:shadow-[0_0_20px_rgba(0,242,254,0.6)]' : 'bg-slate-700 text-slate-400'">
+                            確認結帳
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 5. 商城頁面 -->
+                <div v-else-if="page === 'shop'" class="flex flex-col">
+                    <h2 class="text-2xl font-bold mb-8 border-l-4 border-brand pl-3">官方應援周邊</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                        <div v-for="product in products" :key="product.id" class="bg-card rounded-xl border border-slate-700 overflow-hidden hover:border-slate-500 transition group">
+                            <div class="h-48 bg-dark flex items-center justify-center border-b border-slate-700">
+                                <i :class="product.icon" class="text-6xl text-slate-600 group-hover:text-brand transition duration-300"></i>
+                            </div>
+                            <div class="p-4">
+                                <h3 class="font-bold text-lg text-white mb-1">{{ product.name }}</h3>
+                                <p class="text-brand font-bold mb-4">NT$ {{ product.price }}</p>
+                                <button @click="addToCart(product)" class="w-full py-2 border border-slate-600 rounded text-sm hover:bg-slate-800 transition">加入購物車</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </transition>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const page = ref('home');
+                const user = ref(null);
+                const isAdmin = ref(false);
+                const loginMode = ref('user'); // 'user' | 'admin'
+                
+                const loginForm = reactive({ email: '', password: '' });
+                const adminLoginForm = reactive({ empId: '', password: '' });
+
+                const toast = reactive({ show: false, message: '', type: 'success' });
+                const showToast = (msg, type = 'success') => {
+                    toast.message = msg;
+                    toast.type = type;
+                    toast.show = true;
+                    setTimeout(() => toast.show = false, 3000);
+                };
+
+                const navTo = (target) => {
+                    if (target === 'tickets' && !user.value) {
+                        showToast('請先登入會員才能進行購票', 'error');
+                        loginMode.value = 'user';
+                        page.value = 'login';
+                    } else {
+                        page.value = target;
+                    }
+                };
+
+                const handleLogin = () => {
+                    user.value = { email: loginForm.email };
+                    isAdmin.value = false;
+                    showToast('一般登入成功！');
+                    page.value = 'home';
+                };
+
+                const handleAdminLogin = () => {
+                    user.value = { empId: adminLoginForm.empId };
+                    isAdmin.value = true;
+                    showToast('管理員登入成功，進入營運後台', 'admin');
+                    page.value = 'admin-dashboard';
+                };
+
+                const logout = () => {
+                    user.value = null;
+                    isAdmin.value = false;
+                    seats.value.forEach(s => { if(s.status === 1) s.status = 0 });
+                    page.value = 'home';
+                };
+
+                // 核心：座位與統計數據
+                const seats = ref([]);
+                const stats = reactive({ totalSeats: 50, soldSeats: 0 });
+
+                const initSeats = () => {
+                    let idCounter = 1;
+                    const tempSeats = [];
+                    let soldCount = 0;
+                    for (let row = 1; row <= 5; row++) {
+                        for (let col = 1; col <= 10; col++) {
+                            const isSold = Math.random() > 0.85;
+                            if (isSold) soldCount++;
+                            tempSeats.push({
+                                id: idCounter++, row: row, col: col,
+                                status: isSold ? 2 : 0, price: 5800
+                            });
+                        }
+                    }
+                    seats.value = tempSeats;
+                    stats.soldSeats = soldCount;
+                };
+
+                const selectedSeats = computed(() => seats.value.filter(s => s.status === 1));
+                const selectedSeatsTotal = computed(() => selectedSeats.value.reduce((sum, s) => sum + s.price, 0));
+
+                const toggleSeat = (seat) => {
+                    if (seat.status === 2) return;
+                    if (seat.status === 0) {
+                        if (selectedSeats.value.length >= 4) {
+                            showToast('每筆訂單限購 4 張票', 'error');
+                            return;
+                        }
+                        seat.status = 1;
+                    } else if (seat.status === 1) {
+                        seat.status = 0;
+                    }
+                };
+
+                const simulateConcurrentBooking = () => {
+                    const availableSeats = seats.value.filter(s => s.status === 0);
+                    if (availableSeats.length > 0) {
+                        const randomSeat = availableSeats[Math.floor(Math.random() * availableSeats.length)];
+                        randomSeat.status = 2;
+                        stats.soldSeats++;
+                        showToast(`系統模擬：排${randomSeat.row} 號${randomSeat.col} 被搶走`, 'error');
+                    }
+                };
+
+                const submitBooking = () => {
+                    let count = 0;
+                    seats.value.forEach(s => {
+                        if (s.status === 1) {
+                            s.status = 2;
+                            count++;
+                        }
+                    });
+                    stats.soldSeats += count;
+                    showToast('結帳成功！已生成票券訂單。');
+                    setTimeout(() => { page.value = 'home'; }, 1500);
+                };
+
+                // 商城模型
+                const products = ref([
+                    { id: 1, name: '2026 官方應援手燈', price: 1200, icon: 'ph-flashlight' },
+                    { id: 2, name: '紀念 T-Shirt', price: 980, icon: 'ph-t-shirt' },
+                    { id: 3, name: '主題運動毛巾', price: 450, icon: 'ph-waves' },
+                    { id: 4, name: '簽名海報', price: 600, icon: 'ph-image-square' }
+                ]);
+                const cart = ref([]);
+                const cartTotalQty = computed(() => cart.value.length);
+
+                const addToCart = (product) => {
+                    cart.value.push({ ...product });
+                    showToast(`已加入：${product.name}`);
+                };
+
+                onMounted(() => { initSeats(); });
+
+                return {
+                    page, navTo, user, isAdmin, loginMode,
+                    loginForm, adminLoginForm, handleLogin, handleAdminLogin, logout,
+                    toast, seats, stats, selectedSeats, selectedSeatsTotal, toggleSeat, simulateConcurrentBooking, submitBooking,
+                    products, cart, cartTotalQty, addToCart
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
